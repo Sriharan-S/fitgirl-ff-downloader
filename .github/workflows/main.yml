@@ -15,6 +15,11 @@ jobs:
     # Use a Windows runner because we are building a .exe
     runs-on: windows-latest
 
+    # --- ADD THIS BLOCK TO GRANT WRITE PERMISSIONS ---
+    permissions:
+      contents: write
+    # --- END OF FIX ---
+
     steps:
       # 1. Check out your repository's code
       - name: Checkout code
