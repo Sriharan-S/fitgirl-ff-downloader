@@ -10,6 +10,25 @@ A GUI application for downloading files from FitGirl Repacks website using Fucki
 - Resume support for interrupted downloads
 - Automatic state management
 
+## Running from Pre-built Executable
+
+If you don't want to install Python or manage dependencies, you can download and run the pre-built executable.
+
+### 1. Download the Latest Release
+
+1. Go to the [Releases page](https://github.com/Sriharan-S/fitgirl-ff-downloader/releases/tag/latest)
+2. Download the appropriate executable for your operating system:
+   - **Windows**: `WebScraper.exe`
+
+### 2. Run the Executable
+
+#### Windows
+- Double-click the `WebScraper.exe` file
+- Or run from Command Prompt:
+  ```cmd
+  WebScraper.exe
+  ```
+
 ## Prerequisites
 
 - Python 3.7 or higher
@@ -35,25 +54,6 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
-
-## Running from Pre-built Executable
-
-If you don't want to install Python or manage dependencies, you can download and run the pre-built executable.
-
-### 1. Download the Latest Release
-
-1. Go to the [Releases page](https://github.com/Sriharan-S/fitgirl-ff-downloader/releases/tag/latest)
-2. Download the appropriate executable for your operating system:
-   - **Windows**: `WebScraper.exe`
-
-### 2. Run the Executable
-
-#### Windows
-- Double-click the `WebScraper.exe` file
-- Or run from Command Prompt:
-  ```cmd
-  WebScraper.exe
-  ```
 
 ## How to Use
 
