@@ -70,7 +70,7 @@ jobs:
           # Name of the release.
           name: Latest Build (from main)
           # 'true' means it's a pre-release (good for main branch builds)
-          prerelease: true
+          prerelease: false
           # 'true' means it will create the release if it doesn't exist.
           make_latest: true
           # 'true' allows this action to overwrite existing assets.
