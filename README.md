@@ -44,27 +44,15 @@ If you don't want to install Python or manage dependencies, you can download and
 
 1. Go to the [Releases page](https://github.com/Sriharan-S/fitgirl-ff-downloader/releases/tag/latest)
 2. Download the appropriate executable for your operating system:
-   - **Windows**: `fitgirl-ff-downloader.exe`
-   - **Linux**: `fitgirl-ff-downloader` (Linux binary)
-   - **macOS**: `fitgirl-ff-downloader` (macOS binary)
+   - **Windows**: `WebScraper.exe`
 
 ### 2. Run the Executable
 
 #### Windows
-- Double-click the `fitgirl-ff-downloader.exe` file
+- Double-click the `WebScraper.exe` file
 - Or run from Command Prompt:
   ```cmd
-  fitgirl-ff-downloader.exe
-  ```
-
-#### Linux/macOS
-- First, make the file executable:
-  ```bash
-  chmod +x fitgirl-ff-downloader
-  ```
-- Then run it:
-  ```bash
-  ./fitgirl-ff-downloader
+  WebScraper.exe
   ```
 
 ## How to Use
@@ -86,9 +74,6 @@ The application automatically saves download progress. If you close the applicat
 
 ### Windows Security Warning
 When running the executable on Windows, you might see a "Windows protected your PC" warning. This is normal for unsigned executables. Click "More info" and then "Run anyway".
-
-### macOS Security Warning
-On macOS, you might need to allow the app in System Preferences > Security & Privacy after the first run attempt.
 
 ### Python Module Not Found
 If you get a "Module not found" error when running from source:
