@@ -12,8 +12,6 @@ A GUI application for downloading files from FitGirl Repacks website using Fucki
 
 ## Running from Pre-built Executable
 
-If you don't want to install Python or manage dependencies, you can download and run the pre-built executable.
-
 ### 1. Download the Latest Release
 
 1. Go to the [Releases page](https://github.com/Sriharan-S/fitgirl-ff-downloader/releases/tag/latest)
@@ -29,12 +27,12 @@ If you don't want to install Python or manage dependencies, you can download and
   WebScraper.exe
   ```
 
-## Prerequisites
+## Running from Python Source
+
+### Prerequisites
 
 - Python 3.7 or higher
 - Internet connection
-
-## Running from Python Source
 
 ### 1. Clone the Repository
 
