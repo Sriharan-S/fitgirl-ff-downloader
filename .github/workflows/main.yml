@@ -4,7 +4,6 @@
 
 name: Build and Release EXE
 
-# --- MODIFIED TRIGGER ---
 # Trigger this workflow on push to the main branch
 # ONLY IF main.py or requirements.txt have changed.
 on:
@@ -14,7 +13,6 @@ on:
     paths:
       - 'main.py'
       - 'requirements.txt'
-# --- END OF MODIFICATION ---
 
 jobs:
   build:
@@ -45,10 +43,6 @@ jobs:
           pip install pyinstaller
 
       # 4. Run PyInstaller to build the .exe
-      #    --onefile: Bundles everything into a single executable
-      #    --windowed: Prevents the black console window from opening
-      #    --name: Sets the final name of your .exe file
-      #    --hidden-import: Ensures specific libraries are bundled
       - name: Build executable
         run: >
           pyinstaller 
@@ -60,17 +54,15 @@ jobs:
           --hidden-import=tkinter 
           main.py
 
-      # --- NEW STEP: Extract the version from main.py ---
-      # This step reads main.py, finds the version string, and saves it
-      # to an output variable named 'VERSION_TAG'
+      # --- MODIFIED STEP: Use 'shell: bash' to fix parsing error ---
       - name: Extract Version from main.py
         id: extract_version
         run: |
-          $version = python -c "import re; content=open('main.py', 'r').read(); print(re.search(r'CURRENT_VERSION\s*=\s*[\"']([^\"']+)[\"']', content).group(1))"
-          Write-Host "Found version: $version"
-          echo "VERSION_TAG=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        shell: powershell
-      # --- END OF NEW STEP ---
+          version=$(python -c "import re; content=open('main.py', 'r').read(); print(re.search(r'CURRENT_VERSION\s*=\s*[\"']([^\"']+)[\"']', content).group(1))")
+          echo "Found version: $version"
+          echo "VERSION_TAG=$version" >> $GITHUB_OUTPUT
+        shell: bash
+      # --- END OF MODIFICATION ---
 
       # 5. Create or update a release using the extracted version
       - name: Create/Update Release
@@ -83,11 +75,7 @@ jobs:
           name: Version ${{ steps.extract_version.outputs.VERSION_TAG }} (from main)
 
           prerelease: false
-          # 'make_latest' is no longer needed when using versioned tags,
-          # but we can keep 'true' to mark this as the "Latest" release
           make_latest: true
-          # 'true' allows this action to overwrite an existing release
-          # IF the tag already exists (e.g., re-running a failed build)
           allow_updates: true
           # Files to upload.
           files: ./dist/WebScraper.exe
