@@ -9,7 +9,18 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
+import sys
+import subprocess
+import webbrowser
 
+# --- UPDATE CHECKER: NEW CONSTANTS ---
+# !!! IMPORTANT !!!
+# You MUST change this version string every time you create a new GitHub Release.
+# Make it match your new release tag (e.g., "v1.1", "v1.2").
+CURRENT_VERSION = "v1.0"  # Start with v1.0 or your current version
+
+# The GitHub repository to check for updates, in "OWNER/REPO" format.
+GITHUB_REPO = "sriharan-s/fitgirl-ff-downloader"
 
 # --- New Selection Dialog Class ---
 
@@ -101,12 +112,83 @@ class SelectionDialog(tk.Toplevel):
         self.destroy()
 
 
+# --- UPDATE CHECKER: NEW DIALOG CLASS ---
+class UpdateDialog(tk.Toplevel):
+    """A modal dialog to show update information."""
+
+    def __init__(self, parent, version, notes, url, download_callback):
+        super().__init__(parent)
+        self.transient(parent)
+        self.grab_set()
+        self.title("Update Available")
+        self.geometry("500x350")
+
+        self.url = url
+        self.download_callback = download_callback
+
+        main_frame = ttk.Frame(self, padding=15)
+        main_frame.pack(fill="both", expand=True)
+
+        title_label = ttk.Label(main_frame, text=f"New Version Found: {version}",
+                                font=("-size 12 -weight bold"))
+        title_label.pack(pady=(0, 10))
+
+        notes_label = ttk.Label(main_frame, text="What's New:")
+        notes_label.pack(anchor="w")
+
+        notes_frame = ttk.Frame(main_frame, relief="sunken", borderwidth=1)
+        notes_frame.pack(fill="both", expand=True, pady=5)
+
+        notes_text = scrolledtext.ScrolledText(notes_frame, state="normal", height=10, wrap=tk.WORD,
+                                               font=("Consolas", 9))
+        notes_text.pack(fill="both", expand=True, padx=5, pady=5)
+        notes_text.insert(tk.END, notes if notes else "No release notes provided.")
+        notes_text.config(state="disabled")
+
+        # --- Bottom frame for buttons ---
+        bottom_frame = ttk.Frame(main_frame)
+        bottom_frame.pack(pady=(10, 0), fill="x")
+
+        self.download_button = ttk.Button(bottom_frame, text="Download and Restart",
+                                          command=self.on_download)
+        self.download_button.pack(side="right", padx=5)
+
+        skip_button = ttk.Button(bottom_frame, text="Skip This Version", command=self.destroy)
+        skip_button.pack(side="right")
+
+        self.wait_visibility()
+        self.grab_set()
+        self.focus_set()
+
+    def on_download(self):
+        """Disables button and starts the download callback in a thread."""
+        self.download_button.config(state="disabled", text="Downloading...")
+        # Run the actual download in a thread to keep dialog responsive
+        threading.Thread(target=self.run_download_callback, daemon=True).start()
+
+    def run_download_callback(self):
+        """
+        Worker function to call the main app's download logic.
+        This will trigger the app restart, so this dialog will be
+        destroyed automatically when the main app closes.
+        """
+        try:
+            self.download_callback(self.url)
+        except Exception as e:
+            # Re-enable button on failure
+            self.download_button.config(state="normal", text="Download and Restart")
+            messagebox.showerror("Update Failed", f"Could not download update: {e}", parent=self)
+
+
+# --- END UPDATE CHECKER ---
+
+
 # --- Main Application Class ---
 
 class DownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Web Page Link Downloader")
+        self.root.title(f"Web Page Link Downloader - {CURRENT_VERSION}")
         self.root.geometry("800x600")
 
         # --- Class Variables ---
@@ -124,6 +206,12 @@ class DownloaderApp:
 
         # --- Create GUI Widgets ---
         self.create_widgets()
+
+        # --- UPDATE CHECKER: START CHECK ON LAUNCH ---
+        self.log_to_gui("Welcome!", f"Current version: {CURRENT_VERSION}", "info")
+        self.updater_thread = threading.Thread(target=self.check_for_updates, daemon=True)
+        self.updater_thread.start()
+        # --- END UPDATE CHECKER ---
 
     def create_widgets(self):
         # --- Frame 1: Source Selection ---
@@ -512,6 +600,151 @@ class DownloaderApp:
             self.log_to_gui(f"Failed To Download File '{file_label}'", str(e), "error")
             self.clear_progress()
             return False
+
+    # --- UPDATE CHECKER: NEW METHODS ---
+
+    def check_for_updates(self):
+        """
+        Checks GitHub API for the latest release.
+        Runs in a separate thread.
+        """
+        self.log_to_gui("Checking for updates...", f"Repo: {GITHUB_REPO}", "info")
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+        try:
+            response = requests.get(api_url, timeout=5)
+            if response.status_code != 200:
+                self.log_to_gui("Failed to check for updates.", f"API Status: {response.status_code}", "warning")
+                return
+
+            data = response.json()
+            latest_version = data.get("tag_name")
+            release_notes = data.get("body")
+            assets = data.get("assets", [])
+            download_url = None
+
+            # Find the WebScraper.exe asset
+            for asset in assets:
+                if asset.get("name") == "WebScraper.exe":
+                    download_url = asset.get("browser_download_url")
+                    break
+
+            if not latest_version:
+                self.log_to_gui("Could not find 'tag_name' in API response.", "Update check failed.", "warning")
+                return
+
+            # Compare versions
+            if latest_version != CURRENT_VERSION:
+                self.log_to_gui(f"New version found: {latest_version}", "Update available!", "success")
+                if download_url:
+                    # Show the update dialog on the main thread
+                    self.root.after(0, self.show_update_dialog, latest_version, release_notes, download_url)
+                else:
+                    self.log_to_gui(f"Update {latest_version} found, but 'WebScraper.exe' asset is missing.",
+                                    "Update failed.", "error")
+            else:
+                self.log_to_gui("Application is up to date.", f"Version: {CURRENT_VERSION}", "info")
+
+        except requests.exceptions.ConnectionError:
+            self.log_to_gui("Update check failed.", "No internet connection.", "warning")
+        except Exception as e:
+            self.log_to_gui(f"Error checking for updates", str(e), "error")
+
+    def show_update_dialog(self, version, notes, url):
+        """Creates and shows the update dialog window."""
+        UpdateDialog(self.root, version, notes, url, self.download_and_apply_update)
+
+    def download_and_apply_update(self, url):
+        """
+        Downloads the new executable and creates a batch file
+        to perform the self-replacement and restart.
+        """
+
+        # Check if we are running as a frozen executable (PyInstaller)
+        if not getattr(sys, 'frozen', False):
+            # We are running from a Python script
+            self.log_to_gui("Running from source.", "Cannot apply update automatically.", "warning")
+            self.log_to_gui("Opening download page in browser...", url, "info")
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Running from Source",
+                "A new version is available, but the app is running from a Python script.\n\n"
+                "The download page will be opened for you to update manually.",
+                parent=self.root
+            ))
+            webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest")
+            return
+
+        try:
+            # --- We are running as an .exe ---
+            current_exe_path = sys.executable
+            exe_dir = os.path.dirname(current_exe_path)
+            exe_name = os.path.basename(current_exe_path)
+
+            # Define paths for new exe and updater script
+            new_exe_path = os.path.join(exe_dir, f"{exe_name}.new")
+            updater_bat_path = os.path.join(exe_dir, "updater.bat")
+
+            # Download the new .exe
+            self.log_to_gui("Downloading update...", f"To: {os.path.basename(new_exe_path)}", "info")
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+
+            with open(new_exe_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            self.log_to_gui("Update downloaded successfully.", "", "success")
+
+            # Create the updater.bat file
+            # This script will:
+            # 1. Wait 3 seconds for the main app to close.
+            # 2. Delete the old .exe.
+            # 3. Rename the .new file to the original .exe name.
+            # 4. Relaunch the new .exe.
+            # 5. Delete itself.
+            bat_content = f"""
+@echo off
+echo Waiting for application ({exe_name}) to close...
+timeout /t 3 /nobreak > NUL
+echo Replacing executable...
+del "{current_exe_path}"
+if %errorlevel% neq 0 (
+    echo FAILED to delete {exe_name}. Retrying...
+    timeout /t 2 /nobreak > NUL
+    del "{current_exe_path}"
+)
+echo Renaming update...
+rename "{new_exe_path}" "{exe_name}"
+echo Relaunching application...
+start "" "{current_exe_path}"
+echo Cleaning up...
+del "{updater_bat_path}"
+"""
+            with open(updater_bat_path, 'w') as f:
+                f.write(bat_content)
+
+            self.log_to_gui("Applying update and restarting...", "App will close.", "info")
+
+            # Launch the batch file in a new, detached process
+            # This allows it to run even after our Python app closes.
+            subprocess.Popen(
+                [updater_bat_path],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                close_fds=True,
+                shell=True
+            )
+
+            # Close the main application
+            self.root.after(100, self.root.destroy)
+
+        except Exception as e:
+            self.log_to_gui("Failed to apply update.", str(e), "error")
+            self.root.after(0, lambda: messagebox.showerror("Update Failed", f"Could not apply update: {e}",
+                                                            parent=self.root))
+            # Clean up partial download
+            if os.path.exists(new_exe_path):
+                os.remove(new_exe_path)
+    # --- END UPDATE CHECKER ---
 
 
 # --- Main execution ---
