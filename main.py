@@ -17,7 +17,7 @@ import webbrowser
 # !!! IMPORTANT !!!
 # You MUST change this version string every time you create a new GitHub Release.
 # Make it match your new release tag (e.g., "v1.1", "v1.2").
-CURRENT_VERSION = "v1.1"  # Start with v1.0 or your current version
+CURRENT_VERSION = "v1.2"  # Start with v1.0 or your current version
 
 # The GitHub repository to check for updates, in "OWNER/REPO" format.
 GITHUB_REPO = "sriharan-s/fitgirl-ff-downloader"
@@ -654,97 +654,130 @@ class DownloaderApp:
         """Creates and shows the update dialog window."""
         UpdateDialog(self.root, version, notes, url, self.download_and_apply_update)
 
-    def download_and_apply_update(self, url):
-        """
-        Downloads the new executable and creates a batch file
-        to perform the self-replacement and restart.
-        """
+        def download_and_apply_update(self, url):
+            """
+            Downloads the new executable and creates a batch file
+            to perform the self-replacement and restart.
+            """
 
-        # Check if we are running as a frozen executable (PyInstaller)
-        if not getattr(sys, 'frozen', False):
-            # We are running from a Python script
-            self.log_to_gui("Running from source.", "Cannot apply update automatically.", "warning")
-            self.log_to_gui("Opening download page in browser...", url, "info")
-            self.root.after(0, lambda: messagebox.showinfo(
-                "Running from Source",
-                "A new version is available, but the app is running from a Python script.\n\n"
-                "The download page will be opened for you to update manually.",
-                parent=self.root
-            ))
-            webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest")
-            return
+            # Check if we are running as a frozen executable (PyInstaller)
+            if not getattr(sys, 'frozen', False):
+                # We are running from a Python script
+                self.log_to_gui("Running from source.", "Cannot apply update automatically.", "warning")
+                self.log_to_gui("Opening download page in browser...", url, "info")
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Running from Source",
+                    "A new version is available, but the app is running from a Python script.\n\n"
+                    "The download page will be opened for you to update manually.",
+                    parent=self.root
+                ))
+                webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases/latest")
+                return
 
-        try:
-            # --- We are running as an .exe ---
-            current_exe_path = sys.executable
-            exe_dir = os.path.dirname(current_exe_path)
-            exe_name = os.path.basename(current_exe_path)
+            try:
+                # --- We are running as an .exe ---
+                current_exe_path = sys.executable
+                exe_dir = os.path.dirname(current_exe_path)
+                exe_name = os.path.basename(current_exe_path)
 
-            # Define paths for new exe and updater script
-            new_exe_path = os.path.join(exe_dir, f"{exe_name}.new")
-            updater_bat_path = os.path.join(exe_dir, "updater.bat")
+                # Define paths for new exe and updater script
+                new_exe_path = os.path.join(exe_dir, f"{exe_name}.new")
+                updater_bat_path = os.path.join(exe_dir, "updater.bat")
 
-            # Download the new .exe
-            self.log_to_gui("Downloading update...", f"To: {os.path.basename(new_exe_path)}", "info")
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
+                # Download the new .exe
+                self.log_to_gui("Downloading update...", f"To: {os.path.basename(new_exe_path)}", "info")
+                response = requests.get(url, stream=True)
+                response.raise_for_status()
 
-            with open(new_exe_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                with open(new_exe_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
 
-            self.log_to_gui("Update downloaded successfully.", "", "success")
+                self.log_to_gui("Update downloaded successfully.", "", "success")
 
-            # Create the updater.bat file
-            # This script will:
-            # 1. Wait 3 seconds for the main app to close.
-            # 2. Delete the old .exe.
-            # 3. Rename the .new file to the original .exe name.
-            # 4. Relaunch the new .exe.
-            # 5. Delete itself.
-            bat_content = f"""
-@echo off
-echo Waiting for application ({exe_name}) to close...
-timeout /t 3 /nobreak > NUL
-echo Replacing executable...
-del "{current_exe_path}"
-if %errorlevel% neq 0 (
-    echo FAILED to delete {exe_name}. Retrying...
-    timeout /t 2 /nobreak > NUL
-    del "{current_exe_path}"
-)
-echo Renaming update...
-rename "{new_exe_path}" "{exe_name}"
-echo Relaunching application...
-start "" "{current_exe_path}"
-echo Cleaning up...
-del "{updater_bat_path}"
-"""
-            with open(updater_bat_path, 'w') as f:
-                f.write(bat_content)
+                # --- NEW ROBUST BATCH FILE CONTENT ---
+                # This script is much more aggressive about ensuring the update succeeds.
+                bat_content = f"""
+    @echo off
+    setlocal
+    echo Waiting for application to close...
+    :: Ping is a more reliable delay than timeout
+    ping 127.0.0.1 -n 4 > nul
 
-            self.log_to_gui("Applying update and restarting...", "App will close.", "info")
+    echo Forcibly terminating {exe_name} (just in case)...
+    :: Force-kill the executable by name, ignore errors if not running
+    taskkill /f /im "{exe_name}" > nul 2>&1
+    ping 127.0.0.1 -n 2 > nul
 
-            # Launch the batch file in a new, detached process
-            # This allows it to run even after our Python app closes.
-            subprocess.Popen(
-                [updater_bat_path],
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                close_fds=True,
-                shell=True
-            )
+    set "OLD_EXE_PATH={current_exe_path}"
+    set "NEW_EXE_PATH={new_exe_path}"
 
-            # Close the main application
-            self.root.after(100, self.root.destroy)
+    echo Attempting to delete old executable...
+    set "tries=0"
+    :delete_loop
+    if %tries% equ 5 (
+        echo FAILED: Could not delete %OLD_EXE_PATH%.
+        echo You may need to replace it manually.
+        echo New file is at: %NEW_EXE_PATH%
+        ping 127.0.0.1 -n 6 > nul
+        goto self_delete
+    )
+    :: Try to delete the old exe
+    del "%OLD_EXE_PATH%" > nul 2>&1
+    :: Check if it still exists
+    if exist "%OLD_EXE_PATH%" (
+        echo File is still locked. Retrying in 3 sec...
+        ping 127.0.0.1 -n 3 > nul
+        set /a tries=%tries%+1
+        goto delete_loop
+    )
 
-        except Exception as e:
-            self.log_to_gui("Failed to apply update.", str(e), "error")
-            self.root.after(0, lambda: messagebox.showerror("Update Failed", f"Could not apply update: {e}",
-                                                            parent=self.root))
-            # Clean up partial download
-            if os.path.exists(new_exe_path):
-                os.remove(new_exe_path)
-    # --- END UPDATE CHECKER ---
+    echo Old executable deleted.
+    echo Renaming new version...
+
+    :: Move/rename the new exe to the old exe's name
+    move "%NEW_EXE_PATH%" "%OLD_EXE_PATH%"
+    if %errorlevel% neq 0 (
+        echo FAILED: Could not rename new executable.
+        echo You may need to replace it manually.
+        echo New file is at: %NEW_EXE_PATH%
+        ping 127.0.0.1 -n 6 > nul
+        goto self_delete
+    )
+
+    echo Update complete. Restarting application...
+    start "" "%OLD_EXE_PATH%"
+
+    :self_delete
+    echo Cleaning up updater...
+    :: Standard batch trick to delete the batch file itself
+    (goto) 2>nul & del "%~f0"
+    """
+                # --- END OF NEW BATCH FILE CONTENT ---
+
+                with open(updater_bat_path, 'w') as f:
+                    f.write(bat_content)
+
+                self.log_to_gui("Applying update and restarting...", "App will close.", "info")
+
+                # Launch the batch file in a new, detached process
+                subprocess.Popen(
+                    [updater_bat_path],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                    close_fds=True,
+                    shell=True
+                )
+
+                # Close the main application
+                self.root.after(100, self.root.destroy)
+
+            except Exception as e:
+                self.log_to_gui("Failed to apply update.", str(e), "error")
+                self.root.after(0, lambda: messagebox.showerror("Update Failed", f"Could not apply update: {e}",
+                                                                parent=self.root))
+                # Clean up partial download
+                if os.path.exists(new_exe_path):
+                    os.remove(new_exe_path)
 
 
 # --- Main execution ---
