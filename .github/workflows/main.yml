@@ -54,11 +54,13 @@ jobs:
           --hidden-import=tkinter 
           main.py
 
-      # --- MODIFIED STEP: Use 'shell: bash' to fix parsing error ---
+      # --- MODIFIED STEP: Use a more robust regex to fix SyntaxError ---
+      # This regex captures the opening quote (Group 1) and the version (Group 2),
+      # then matches the opening quote again ( \1 )
       - name: Extract Version from main.py
         id: extract_version
         run: |
-          version=$(python -c "import re; content=open('main.py', 'r').read(); print(re.search(r'CURRENT_VERSION\s*=\s*[\"']([^\"']+)[\"']', content).group(1))")
+          version=$(python -c "import re; content=open('main.py', 'r').read(); print(re.search(r'CURRENT_VERSION\s*=\s*([\"\'])(.*?)\1', content).group(2))")
           echo "Found version: $version"
           echo "VERSION_TAG=$version" >> $GITHUB_OUTPUT
         shell: bash

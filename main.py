@@ -746,6 +746,7 @@ del "{updater_bat_path}"
                 os.remove(new_exe_path)
     # --- END UPDATE CHECKER ---
 
+
 # --- Main execution ---
 if __name__ == "__main__":
     root = tk.Tk()
