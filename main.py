@@ -17,7 +17,7 @@ import webbrowser
 # !!! IMPORTANT !!!
 # You MUST change this version string every time you create a new GitHub Release.
 # Make it match your new release tag (e.g., "v1.1", "v1.2").
-CURRENT_VERSION = "v1.0"  # Start with v1.0 or your current version
+CURRENT_VERSION = "v1.1"  # Start with v1.0 or your current version
 
 # The GitHub repository to check for updates, in "OWNER/REPO" format.
 GITHUB_REPO = "sriharan-s/fitgirl-ff-downloader"
