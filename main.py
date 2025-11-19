@@ -12,16 +12,15 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 import sys
 import subprocess
 import webbrowser
-from urllib.parse import urlparse, unquote  # --- NEW: For parsing Datanodes URLs
 
 # --- UPDATE CHECKER: NEW CONSTANTS ---
 # !!! IMPORTANT !!!
 # You MUST change this version string every time you create a new GitHub Release.
-CURRENT_VERSION = "v1.3"  # Bumped version for new functionality
+# Make it match your new release tag (e.g., "v1.1", "v1.2").
+CURRENT_VERSION = "v1.3.1"  # Start with v1.0 or your current version
 
 # The GitHub repository to check for updates, in "OWNER/REPO" format.
 GITHUB_REPO = "sriharan-s/fitgirl-ff-downloader"
-
 
 # --- New Selection Dialog Class ---
 
@@ -71,9 +70,7 @@ class SelectionDialog(tk.Toplevel):
         for file_info in self.files:
             var = tk.BooleanVar(value=True)  # Default to checked
             self.vars.append(var)
-            # Display name and origin
-            display_text = f"[{file_info.get('source', '?')}] {file_info['name']}"
-            chk = ttk.Checkbutton(self.scrollable_frame, text=display_text, variable=var)
+            chk = ttk.Checkbutton(self.scrollable_frame, text=file_info['name'], variable=var)
             chk.pack(anchor="w", padx=10, pady=2)
 
         # --- Bottom frame for OK/Cancel ---
@@ -191,7 +188,7 @@ class UpdateDialog(tk.Toplevel):
 class DownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"FitGirl Link Downloader (FF & Datanodes) - {CURRENT_VERSION}")
+        self.root.title(f"Web Page Link Downloader - {CURRENT_VERSION}")
         self.root.geometry("800x600")
 
         # --- Class Variables ---
@@ -367,6 +364,7 @@ class DownloaderApp:
 
         try:
             # --- PHASE 1: DISCOVERY (with Resume Logic) ---
+            filter_prefix = "https://fuckingfast.co/"
 
             # --- NEW: Check for existing state file ---
             if os.path.exists(state_file):
@@ -388,7 +386,7 @@ class DownloaderApp:
 
             if not links_to_discover:
                 self.log_to_gui("No previous session found. Starting fresh scrape...", scrape_url, "info")
-                links_to_discover = self.scrape_links(scrape_url)
+                links_to_discover = self.scrape_links(scrape_url, filter_prefix)
                 if links_to_discover:
                     self.log_to_gui(f"Scrape complete. Found {len(links_to_discover)} links.", "Saving state...",
                                     "info")
@@ -401,70 +399,51 @@ class DownloaderApp:
             self.log_to_gui(f"Discovering file details for {len(links_to_discover)} links...", "", "info")
 
             discovered_files = []
-
+            # --- MODIFIED: Use links_to_discover list ---
             for i, link in enumerate(links_to_discover):
                 self.log_to_gui(f"Discovering file {i + 1}/{len(links_to_discover)}...", f"{link[:50]}...", "info")
-
-                # --- ROUTING LOGIC: Check if FuckingFast or Datanodes ---
                 try:
-                    if "datanodes.to" in link:
-                        # Handle Datanodes
-                        details = self.resolve_datanodes(link)
-                        if details:
-                            details['source'] = 'DN'
-                            discovered_files.append(details)
-                        else:
-                            self.log_to_gui("Failed to resolve Datanodes link", link, "error")
+                    response = requests.get(link, headers=self.headers)
+                    if response.status_code != 200:
+                        self.log_to_gui(f"Failed To Fetch Page", f"Status: {response.status_code} for {link}", "error")
+                        continue
 
-                    elif "fuckingfast.co" in link:
-                        # Handle FuckingFast (Original Logic)
-                        response = requests.get(link, headers=self.headers)
-                        if response.status_code != 200:
-                            self.log_to_gui(f"Failed To Fetch Page", f"Status: {response.status_code} for {link}",
-                                            "error")
-                            continue
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    meta_title = soup.find('meta', attrs={'name': 'title'})
 
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        meta_title = soup.find('meta', attrs={'name': 'title'})
-
-                        if meta_title and meta_title.get('content'):
-                            file_name = meta_title['content']
-                            file_name = re.sub(r'[<>:"/\\|?*]', '_', file_name)
-                        else:
-                            file_name = f"download_{datetime.now().strftime('%Y%m%d%H%M%S')}_{i}"
-                            self.log_to_gui("Could not find meta title, using default filename", file_name, "warning")
-
-                        script_tags = soup.find_all('script')
-                        download_function = None
-                        for script in script_tags:
-                            if script.string and 'function download' in script.string:
-                                download_function = script.string
-                                break
-
-                        if download_function:
-                            match = re.search(r'window\.open\(["\'](https?://[^\s"\'\)]+)', download_function)
-                            if match:
-                                download_url = match.group(1)
-                                discovered_files.append({
-                                    'name': file_name,
-                                    'url': download_url,
-                                    'page_link': link,
-                                    'source': 'FF'
-                                })
-                            else:
-                                self.log_to_gui("No Download URL Found in download function for", link, "error")
-                        else:
-                            self.log_to_gui("Download Function Not Found on page", link, "error")
-
+                    if meta_title and meta_title.get('content'):
+                        file_name = meta_title['content']
+                        file_name = re.sub(r'[<>:"/\\|?*]', '_', file_name)
                     else:
-                        self.log_to_gui("Unknown link type skipped", link, "warning")
+                        file_name = f"download_{datetime.now().strftime('%Y%m%d%H%M%S')}_{i}"
+                        self.log_to_gui("Could not find meta title, using default filename", file_name, "warning")
 
+                    script_tags = soup.find_all('script')
+                    download_function = None
+                    for script in script_tags:
+                        if script.string and 'function download' in script.string:
+                            download_function = script.string
+                            break
+
+                    if download_function:
+                        match = re.search(r'window\.open\(["\'](https?://[^\s"\'\)]+)', download_function)
+                        if match:
+                            download_url = match.group(1)
+                            discovered_files.append({
+                                'name': file_name,
+                                'url': download_url,
+                                'page_link': link  # --- IMPORTANT: We store this to update the state file
+                            })
+                        else:
+                            self.log_to_gui("No Download URL Found in download function for", link, "error")
+                    else:
+                        self.log_to_gui("Download Function Not Found on page", link, "error")
                 except Exception as e:
                     self.log_to_gui(f"Error discovering link {link}", str(e), "error")
 
             if not discovered_files:
                 self.log_to_gui("Discovery finished, but no valid files were found.", "", "error")
-                # --- Clean up state file if discovery fails for all links ---
+                # --- NEW: Clean up state file if discovery fails for all links ---
                 if os.path.exists(state_file):
                     os.remove(state_file)
                 self.log_to_gui("Removed state file due to discovery failure.", "", "warning")
@@ -492,7 +471,7 @@ class DownloaderApp:
                     dl_success = self.download_file_gui(file_info['url'], download_folder, file_info['name'])
 
                     if dl_success:
-                        # --- Update state file on success ---
+                        # --- NEW: Update state file on success ---
                         self.log_to_gui("Updating session file (removing downloaded link)...",
                                         os.path.basename(state_file), "info")
                         if file_info['page_link'] in links_to_discover:
@@ -508,7 +487,7 @@ class DownloaderApp:
 
             self.log_to_gui("Processing complete for selected files.", "", "done")
 
-            # --- Final cleanup ---
+            # --- NEW: Final cleanup ---
             if not links_to_discover:
                 self.log_to_gui("All links in session processed.", "Removing session file.", "done")
                 try:
@@ -519,6 +498,7 @@ class DownloaderApp:
             else:
                 self.log_to_gui(f"{len(links_to_discover)} links remain in session file for next time.",
                                 os.path.basename(state_file), "info")
+            # --- End NEW ---
 
         except Exception as e:
             self.log_to_gui("An unexpected error occurred in the worker thread", str(e), "error")
@@ -539,8 +519,8 @@ class DownloaderApp:
 
     # --- Helper Functions (Called by Worker Thread) ---
 
-    def scrape_links(self, target_url):
-        """Scrapes a webpage for links (FuckingFast and Datanodes), logging to the GUI."""
+    def scrape_links(self, target_url, filter_prefix):
+        """Scrapes a webpage for links, logging to the GUI."""
         self.log_to_gui("Scraping URL for links", target_url, "info")
         try:
             response = requests.get(target_url, headers=self.headers)
@@ -550,87 +530,22 @@ class DownloaderApp:
             return []
 
         soup = BeautifulSoup(response.text, 'html.parser')
-        found_links = []
-
-        # --- NEW: Filter for both types of links ---
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            if href.startswith("https://fuckingfast.co/") or href.startswith("https://datanodes.to/"):
-                found_links.append(href)
+        found_links = [
+            a['href'] for a in soup.find_all('a', href=True)
+            if a['href'].startswith(filter_prefix)
+        ]
 
         if not found_links:
-            self.log_to_gui("No matching links found on the page", "(FF or Datanodes)", "warning")
+            self.log_to_gui("No matching links found on the page with prefix", filter_prefix, "warning")
         else:
             self.log_to_gui(f"Found {len(found_links)} matching links", "", "success")
 
-        # --- Return unique links to prevent duplicates in state file ---
+        # --- NEW: Return unique links to prevent duplicates in state file ---
         unique_links = list(dict.fromkeys(found_links))
         if len(unique_links) < len(found_links):
             self.log_to_gui(f"Removed {len(found_links) - len(unique_links)} duplicate links.", "", "info")
 
         return unique_links
-
-    def resolve_datanodes(self, link):
-        """
-        Resolves a Datanodes.to link to a direct download URL.
-        Adapted from user provided snippet.
-        """
-        try:
-            parsed_url = urlparse(link)
-            path_segments = parsed_url.path.split("/")
-
-            # Datanodes links are usually /file_code/filename
-            if len(path_segments) < 2:
-                self.log_to_gui("Invalid Datanodes URL format", link, "error")
-                return None
-
-            # segment[0] is empty string because path starts with /
-            file_code = path_segments[1]
-            file_name = unquote(path_segments[-1])
-
-            # Prepare headers specific for Datanodes API
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Cookie": f"lang=english; file_name={file_name}; file_code={file_code};",
-                "Host": "datanodes.to",
-                "Origin": "https://datanodes.to",
-                "Referer": "https://datanodes.to/download",
-                "User-Agent": self.headers['user-agent'],  # Reuse our UA
-            }
-
-            payload = {
-                "op": "download2",
-                "id": file_code,
-                "rand": "",
-                "referer": "https://datanodes.to/download",
-                "method_free": "Free Download >>",
-                "method_premium": "",
-                "dl": 1
-            }
-
-            # POST request to get JSON with direct link
-            response = requests.post("https://datanodes.to/download", data=payload, headers=headers,
-                                     allow_redirects=False)
-
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    direct_url = data.get("url")
-                    if direct_url:
-                        return {
-                            'name': file_name,
-                            'url': unquote(direct_url),
-                            'page_link': link
-                        }
-                except json.JSONDecodeError:
-                    self.log_to_gui("Failed to parse Datanodes JSON response", link, "error")
-            else:
-                self.log_to_gui(f"Datanodes API returned status {response.status_code}", link, "error")
-
-        except Exception as e:
-            self.log_to_gui(f"Exception resolving Datanodes link", f"{link}: {e}", "error")
-
-        return None
 
     def download_file_gui(self, download_url, output_folder, file_label):
         """
@@ -639,7 +554,6 @@ class DownloaderApp:
         Returns True on success, False on failure.
         """
         try:
-            # Reuse common headers
             response = requests.get(download_url, stream=True, headers=self.headers)
 
             if response.status_code == 200:
@@ -650,11 +564,10 @@ class DownloaderApp:
                     if match:
                         file_name = match.group(1)
                 else:
-                    # Fallback: try to get name from URL if label seems generic
-                    # But usually file_label passed from resolve functions is good
-                    if not file_name:
-                        parsed_url_path = download_url.split('?')[0].split('#')[0]
-                        file_name = parsed_url_path.split('/')[-1]
+                    parsed_url_path = download_url.split('?')[0].split('#')[0]
+                    url_filename = parsed_url_path.split('/')[-1]
+                    if url_filename:
+                        file_name = url_filename
 
                 file_name = re.sub(r'[<>:"/\\|?*]', '_', file_name)
 
