@@ -1,5 +1,13 @@
 # FitGirl FF Downloader
 
+> **⚠️ DEPRECATED - This repository is no longer maintained**
+> 
+> This project has been superseded by a new and improved version. Please use the new repository:
+> 
+> **👉 [Sriharan-S/fitgirl-downloader](https://github.com/Sriharan-S/fitgirl-downloader)**
+> 
+> The new version includes enhanced features, better performance, and active support.
+
 A GUI application for downloading files from FitGirl Repacks website using FuckingFast.co links.
 
 ## Features
